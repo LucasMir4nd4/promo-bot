@@ -1,0 +1,184 @@
+package com.promocoes.bot.client;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.promocoes.bot.dto.ProdutoDTO;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.http.*;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Client para a API do Mercado Livre.
+ *
+ * Documentação: https://developers.mercadolivre.com.br/pt_br/itens-e-buscas
+ *
+ * IMPORTANTE: Para gerar links de afiliado você precisa:
+ * 1. Ter conta no Mercado Pago / ML Afiliados
+ * 2. O parâmetro matt_tool é o seu ID de afiliado (obtido no painel de afiliados)
+ * 3. Access token gerado via OAuth2 nas credenciais do seu app em:
+ *    https://developers.mercadolivre.com.br/
+ */
+@Slf4j
+@Component
+public class MercadoLivreApiClient {
+
+    private static final String BASE_URL = "https://api.mercadolibre.com";
+
+    @Value("${mercadolivre.access-token}")
+    private String accessToken;
+
+    @Value("${mercadolivre.partner-tag}")
+    private String partnerTag; // ex: milu20240103182159
+
+    @Value("${mercadolivre.desconto-minimo}")
+    private int descontoMinimo;
+
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+
+    public MercadoLivreApiClient() {
+        this.restTemplate = new RestTemplate();
+        this.objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * Busca produtos em promoção por categoria (highlight da categoria).
+     *
+     * @param categoriaId ID da categoria no ML (ex: "MLB1276" para Eletrônicos)
+     * @param maxResultados número máximo de produtos a retornar
+     * @return lista de produtos com desconto e link de afiliado
+     */
+    public List<ProdutoDTO> buscarPromocoesPorCategoria(String categoriaId, int maxResultados) {
+        List<ProdutoDTO> produtos = new ArrayList<>();
+
+        try {
+            // 1. Busca os highlights (produtos em destaque/promoção) da categoria
+            JsonNode highlights = buscarHighlights(categoriaId);
+            JsonNode content = highlights.path("content");
+
+            if (!content.isArray()) {
+                log.warn("Nenhum highlight encontrado para categoria {}", categoriaId);
+                return produtos;
+            }
+
+            int processados = 0;
+            for (JsonNode itemNode : content) {
+                if (processados >= maxResultados) break;
+
+                String productId = itemNode.path("id").asText();
+                if (productId.isBlank()) continue;
+
+                try {
+                    ProdutoDTO produto = buscarDadosProduto(productId);
+                    if (produto != null) {
+                        produtos.add(produto);
+                        processados++;
+                    }
+                } catch (Exception e) {
+                    log.warn("Erro ao buscar produto {}: {}", productId, e.getMessage());
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Erro ao buscar promoções ML para categoria {}: {}", categoriaId, e.getMessage());
+        }
+
+        return produtos;
+    }
+
+    /**
+     * Busca os produtos em destaque (highlights) de uma categoria.
+     */
+    private JsonNode buscarHighlights(String categoriaId) {
+        String url = BASE_URL + "/highlights/MLB/category/" + categoriaId;
+        return get(url);
+    }
+
+    /**
+     * Busca dados completos de um produto pelo ID e monta o DTO com link de afiliado.
+     * Retorna null se o produto não atender ao desconto mínimo.
+     */
+    private ProdutoDTO buscarDadosProduto(String productId) {
+        // Busca o item real vinculado ao produto
+        JsonNode itemsNode = get(BASE_URL + "/products/" + productId + "/items");
+        JsonNode results = itemsNode.path("results");
+
+        if (!results.isArray() || results.isEmpty()) return null;
+
+        JsonNode item = results.get(0);
+        String itemId = item.path("item_id").asText();
+
+        // Busca detalhes do produto (título, imagem)
+        JsonNode produto = get(BASE_URL + "/products/" + productId);
+
+        String titulo = produto.path("name").asText("Produto sem título");
+        String urlImagem = produto.path("pictures").path(0).path("url").asText("");
+
+        // Preços
+        BigDecimal precoAtual = BigDecimal.valueOf(item.path("price").asDouble(0));
+        BigDecimal precoOriginal = item.path("original_price").isNull()
+                ? precoAtual
+                : BigDecimal.valueOf(item.path("original_price").asDouble(0));
+
+        if (precoAtual.compareTo(BigDecimal.ZERO) == 0) return null;
+
+        // Calcula desconto
+        int desconto = 0;
+        if (precoOriginal.compareTo(precoAtual) > 0) {
+            desconto = precoOriginal.subtract(precoAtual)
+                    .multiply(new BigDecimal("100"))
+                    .divide(precoOriginal, 0, RoundingMode.HALF_UP)
+                    .intValue();
+        }
+
+        if (desconto < descontoMinimo) {
+            log.debug("Produto {} ignorado: {}% de desconto (mínimo: {}%)", productId, desconto, descontoMinimo);
+            return null;
+        }
+
+        // Monta link direto e link de afiliado
+        String urlProduto = "https://www.mercadolivre.com.br/p/" + productId;
+        String urlAfiliado = urlProduto + "?matt_tool=" + partnerTag;
+
+        log.info("Produto encontrado: {} - {}% OFF", titulo, desconto);
+
+        return ProdutoDTO.builder()
+                .asin(itemId)              // reutilizando o campo como ID do item ML
+                .titulo(titulo)
+                .precoAtual(precoAtual)
+                .precoOriginal(precoOriginal)
+                .percentualDesconto(desconto)
+                .urlImagem(urlImagem)
+                .urlProduto(urlProduto)
+                .urlAfiliado(urlAfiliado)
+                .build();
+    }
+
+    /**
+     * Faz GET autenticado na API do ML e retorna o JSON parseado.
+     */
+    private JsonNode get(String url) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + accessToken);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        HttpEntity<Void> request = new HttpEntity<>(headers);
+
+        ResponseEntity<String> response = restTemplate.exchange(
+                url, HttpMethod.GET, request, String.class
+        );
+
+        try {
+            return objectMapper.readTree(response.getBody());
+        } catch (Exception e) {
+            throw new RuntimeException("Erro ao parsear resposta da API ML: " + url, e);
+        }
+    }
+}

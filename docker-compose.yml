@@ -1,0 +1,71 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────
+#  Amazon Promo Bot – Docker Compose
+#  Sobe: PostgreSQL + Evolution API (WhatsApp) + o Bot
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Banco de dados PostgreSQL ──────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: promo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-promodb}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Evolution API (WhatsApp) ───────────────────────────────
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: promo-evolution
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-minha-chave-secreta}
+      DATABASE_ENABLED: "true"
+      DATABASE_CONNECTION_URI: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-promodb}
+      DATABASE_CONNECTION_DB_PREFIX_NAME: evolution
+    volumes:
+      - evolution_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Bot Spring Boot ────────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: promo-bot
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      EVOLUTION_API_URL: http://evolution-api:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      evolution-api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  evolution_instances:

@@ -1,0 +1,75 @@
+package com.promocoes.bot.config;
+
+import com.promocoes.bot.repository.ProdutoEnviadoRepository;
+import com.promocoes.bot.service.MercadoLivrePromoService;
+import com.promocoes.bot.service.PromoService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.Map;
+
+/**
+ * Controller REST com endpoints utilitários.
+ *
+ * Permite disparar o ciclo manualmente e consultar estatísticas.
+ * Útil para testes e monitoramento via VPS.
+ */
+@Slf4j
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+public class BotController {
+//
+//    private final PromoService promoService;
+    private final MercadoLivrePromoService promoService;
+    private final ProdutoEnviadoRepository repository;
+
+    /**
+     * Health check – confirma que o bot está rodando.
+     * GET /api/health
+     */
+    @GetMapping("/health")
+    public ResponseEntity<Map<String, Object>> health() {
+        long totalEnviados = repository.count();
+        return ResponseEntity.ok(Map.of(
+            "status", "UP",
+            "timestamp", LocalDateTime.now().toString(),
+            "totalProdutosEnviados", totalEnviados
+        ));
+    }
+
+    /**
+     * Dispara o ciclo de promoções manualmente (sem esperar o scheduler).
+     * POST /api/executar
+     *
+     * Útil para testar sem precisar esperar o próximo cron.
+     */
+    @PostMapping("/executar")
+    public ResponseEntity<Map<String, String>> executarManual() {
+        log.info("[API] Execução manual solicitada");
+        new Thread(promoService::processarPromocoes).start();
+        return ResponseEntity.ok(Map.of(
+            "mensagem", "Ciclo de promoções iniciado em background",
+            "timestamp", LocalDateTime.now().toString()
+        ));
+    }
+
+    /**
+     * Lista os últimos produtos enviados.
+     * GET /api/enviados?horas=24
+     */
+    @GetMapping("/enviados")
+    public ResponseEntity<?> listarEnviados(
+            @RequestParam(defaultValue = "24") int horas) {
+        LocalDateTime desde = LocalDateTime.now().minusHours(horas);
+        var produtos = repository.findByEnviadoEmAfter(desde);
+        return ResponseEntity.ok(Map.of(
+            "quantidade", produtos.size(),
+            "periodo", "últimas " + horas + " horas",
+            "produtos", produtos
+        ));
+    }
+}
