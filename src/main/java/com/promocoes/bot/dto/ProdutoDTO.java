@@ -11,7 +11,7 @@ import java.math.BigDecimal;
  * DTO com os dados do produto vindos da API da Amazon.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProdutoDTO {

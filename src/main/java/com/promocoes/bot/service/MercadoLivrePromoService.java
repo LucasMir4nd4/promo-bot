@@ -2,6 +2,7 @@ package com.promocoes.bot.service;
 
 import com.promocoes.bot.client.*;
 import com.promocoes.bot.dto.CopyPromoDTO;
+import com.promocoes.bot.dto.LinkDTO;
 import com.promocoes.bot.dto.ProdutoDTO;
 import com.promocoes.bot.model.ProdutoEnviado;
 import com.promocoes.bot.repository.ProdutoEnviadoRepository;
@@ -16,13 +17,16 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Serviço principal que orquestra todo o fluxo do bot:
+ * Serviço principal que orquestra todo o fluxo do bot.
  *
- * 1. Busca produtos em promoção no Mercado Livre (por categoria)
- * 2. Verifica no banco se o produto já foi enviado (evita duplicidade)
- * 3. Gera headline + texto de venda via OpenAI
- * 4. Envia para WhatsApp (Evolution API) e Telegram
- * 5. Persiste o produto como "enviado" no banco
+ * Dois modos de operação:
+ *
+ * 1. processarLinksFixos() → lê IDs do links.json, busca dados reais no ML,
+ *    usa o link de afiliado fixo gerado na mão. Use esse enquanto não tiver
+ *    o partner tag do ML configurado.
+ *
+ * 2. processarPromocoes() → busca produtos automaticamente por categoria
+ *    via highlights do ML. Requer access token + partner tag configurados.
  */
 @Slf4j
 @Service
@@ -34,21 +38,64 @@ public class MercadoLivrePromoService {
     private final TelegramBotClient telegramBotClient;
     private final WhatsAppEvolutionClient whatsAppClient;
     private final ProdutoEnviadoRepository repository;
+    private final List<LinkDTO> linksAtivos; // injetado via LinksConfig
 
-    // IDs de categoria do ML (ex: "MLB1276,MLB1000,MLB1144")
-    // Consulte: https://api.mercadolibre.com/sites/MLB/categories
     @Value("${mercadolivre.categorias}")
     private String categoriasConfig;
 
     @Value("${scheduler.max-produtos}")
     private int maxProdutos;
 
+    // =========================================================================
+    // MODO 1 — Links fixos do links.json (use esse agora)
+    // =========================================================================
+
     /**
-     * Ponto de entrada do fluxo principal.
-     * Chamado pelo scheduler a cada intervalo configurado.
+     * Fluxo com links fixos: lê mlbId do links.json, busca dados reais no ML
+     * e usa o linkAfiliado fixo gerado na mão.
+     *
+     * Chamado pelo PromoScheduler enquanto não tiver o partner tag configurado.
+     */
+    public void processarLinksFixos() {
+        log.info("=== Iniciando ciclo com links fixos ({} ativo(s)) ===", linksAtivos.size());
+        int totalEnviados = 0;
+
+        for (LinkDTO link : linksAtivos) {
+            if (totalEnviados >= maxProdutos) {
+                log.info("Limite de {} produtos atingido. Encerrando ciclo.", maxProdutos);
+                break;
+            }
+
+            try {
+                // Busca título, preço, imagem reais direto na API do ML
+                ProdutoDTO produto = mercadoLivreApiClient.buscarPorItemId(link.getMlbId());
+
+                // Sobrescreve o link de afiliado com o seu link fixo do JSON
+                produto = produto.toBuilder()
+                        .urlAfiliado(link.getLinkAfiliado())
+                        .build();
+
+                boolean enviado = processarProduto(produto);
+                if (enviado) totalEnviados++;
+
+            } catch (Exception e) {
+                log.error("Erro ao processar link fixo {}: {}", link.getMlbId(), e.getMessage());
+            }
+        }
+
+        log.info("=== Ciclo de links fixos finalizado. {} enviado(s). ===", totalEnviados);
+    }
+
+    // =========================================================================
+    // MODO 2 — Busca automática por categoria (use quando tiver o partner tag)
+    // =========================================================================
+
+    /**
+     * Fluxo automático: busca produtos em promoção por categoria no ML.
+     * Requer mercadolivre.access-token e mercadolivre.partner-tag no .env.
      */
     public void processarPromocoes() {
-        log.info("=== Iniciando ciclo de promoções ===");
+        log.info("=== Iniciando ciclo de promoções por categoria ===");
 
         List<String> categorias = Arrays.asList(categoriasConfig.split(","));
         int totalEnviados = 0;
@@ -60,11 +107,10 @@ public class MercadoLivrePromoService {
             }
 
             int restante = maxProdutos - totalEnviados;
-            List<ProdutoDTO> produtos = buscarProdutos(categoria.trim(), restante);
+            List<ProdutoDTO> produtos = buscarProdutosPorCategoria(categoria.trim(), restante);
 
             for (ProdutoDTO produto : produtos) {
                 if (totalEnviados >= maxProdutos) break;
-
                 boolean enviado = processarProduto(produto);
                 if (enviado) totalEnviados++;
             }
@@ -73,27 +119,31 @@ public class MercadoLivrePromoService {
         log.info("=== Ciclo finalizado. {} promoções enviadas. ===", totalEnviados);
     }
 
+    // =========================================================================
+    // Fluxo compartilhado pelos dois modos
+    // =========================================================================
+
     /**
      * Processa um único produto: verifica duplicidade, gera copy e envia.
+     * Usado pelos dois modos — não muda nada aqui.
      *
-     * @return true se o produto foi enviado com sucesso
+     * @return true se o produto foi enviado com sucesso para ao menos um canal
      */
     @Transactional
     public boolean processarProduto(ProdutoDTO produto) {
-        // ── Passo 1: verificar duplicidade ──────────────────────────────────
-        // Usa o ID do item ML (ex: MLB123456) salvo no campo 'asin'
+        // Passo 1: verificar duplicidade pelo ID do item ML (campo 'asin')
         if (repository.existsByAsin(produto.getAsin())) {
             log.debug("Produto já enviado anteriormente, ignorando: {}", produto.getAsin());
             return false;
         }
 
-        log.info("Novo produto encontrado: {} ({}% OFF)", produto.getTitulo(), produto.getPercentualDesconto());
+        log.info("Novo produto: {} ({}% OFF)", produto.getTitulo(), produto.getPercentualDesconto());
 
-        // ── Passo 2: gerar copy com IA ────────────────────────────────────
+        // Passo 2: gerar copy com IA
         CopyPromoDTO copy = openAiClient.gerarCopyPromocional(produto);
         log.debug("Copy gerado: {}", copy.getHeadline());
 
-        // ── Passo 3: enviar para as redes sociais ─────────────────────────
+        // Passo 3: enviar para os canais
         boolean enviadoTelegram = false;
         boolean enviadoWhatsapp = false;
 
@@ -109,10 +159,10 @@ public class MercadoLivrePromoService {
             log.error("Erro ao enviar para WhatsApp: {}", e.getMessage());
         }
 
-        // ── Passo 4: persistir no banco ───────────────────────────────────
+        // Passo 4: persistir no banco se enviou para ao menos um canal
         if (enviadoTelegram || enviadoWhatsapp) {
             ProdutoEnviado entidade = ProdutoEnviado.builder()
-                    .asin(produto.getAsin())           // aqui guarda o ID do item ML
+                    .asin(produto.getAsin())
                     .titulo(produto.getTitulo())
                     .precoAtual(produto.getPrecoAtual())
                     .precoOriginal(produto.getPrecoOriginal())
@@ -125,21 +175,20 @@ public class MercadoLivrePromoService {
                     .build();
 
             repository.save(entidade);
-            log.info("Produto salvo no banco: {} | Telegram: {} | WhatsApp: {}",
+            log.info("Salvo no banco: {} | Telegram: {} | WhatsApp: {}",
                     produto.getAsin(), enviadoTelegram, enviadoWhatsapp);
-
             return true;
         }
 
-        log.warn("Produto não foi enviado para nenhuma rede: {}", produto.getAsin());
+        log.warn("Produto não foi enviado para nenhum canal: {}", produto.getAsin());
         return false;
     }
 
-    /**
-     * Busca produtos no Mercado Livre para uma categoria.
-     * Retorna lista vazia em caso de erro.
-     */
-    private List<ProdutoDTO> buscarProdutos(String categoriaId, int limite) {
+    // =========================================================================
+    // Helpers privados
+    // =========================================================================
+
+    private List<ProdutoDTO> buscarProdutosPorCategoria(String categoriaId, int limite) {
         try {
             List<ProdutoDTO> produtos = mercadoLivreApiClient.buscarPromocoesPorCategoria(categoriaId, limite);
             log.info("ML retornou {} produto(s) para categoria '{}'", produtos.size(), categoriaId);

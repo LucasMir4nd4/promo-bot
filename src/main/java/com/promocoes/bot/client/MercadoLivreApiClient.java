@@ -161,6 +161,55 @@ public class MercadoLivreApiClient {
                 .build();
     }
 
+
+    /**
+     * Busca dados de um item direto pelo ID (ex: MLB3939769540).
+     * Usado quando o ID vem do links.json — não passa pela busca por categoria.
+     */
+    public ProdutoDTO buscarPorItemId(String itemId) {
+        try {
+            JsonNode item = get(BASE_URL + "/products/" + itemId +"/items");
+
+            String titulo = item.path("title").asText("Produto sem título");
+
+            // Pega a maior imagem disponível
+            JsonNode pictures = item.path("pictures");
+            String urlImagem = pictures.isArray() && !pictures.isEmpty()
+                    ? pictures.get(0).path("url").asText("").replace("-I.jpg", "-O.jpg")
+                    : item.path("thumbnail").asText("");
+
+            BigDecimal precoAtual = BigDecimal.valueOf(item.path("price").asDouble(0));
+            BigDecimal precoOriginal = item.path("original_price").isNull()
+                    ? precoAtual
+                    : BigDecimal.valueOf(item.path("original_price").asDouble(0));
+
+            int desconto = 0;
+            if (precoOriginal.compareTo(precoAtual) > 0) {
+                desconto = precoOriginal.subtract(precoAtual)
+                        .multiply(new BigDecimal("100"))
+                        .divide(precoOriginal, 0, RoundingMode.HALF_UP)
+                        .intValue();
+            }
+
+            log.info("✅ Item ML: {} | R$ {} | {}% OFF", titulo, precoAtual, desconto);
+
+            return ProdutoDTO.builder()
+                    .asin(itemId)
+                    .titulo(titulo)
+                    .precoAtual(precoAtual)
+                    .precoOriginal(precoOriginal)
+                    .percentualDesconto(desconto)
+                    .urlImagem(urlImagem)
+                    .urlProduto("https://www.mercadolivre.com.br/p/" + itemId)
+                    .urlAfiliado("") // será substituído pelo link fixo do links.json
+                    .build();
+
+        } catch (Exception e) {
+            log.error("❌ Erro ao buscar item {}: {}", itemId, e.getMessage());
+            throw new RuntimeException("Erro ao buscar item ML: " + itemId, e);
+        }
+    }
+
     /**
      * Faz GET autenticado na API do ML e retorna o JSON parseado.
      */

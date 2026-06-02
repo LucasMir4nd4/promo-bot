@@ -50,7 +50,7 @@ public class BotController {
     @PostMapping("/executar")
     public ResponseEntity<Map<String, String>> executarManual() {
         log.info("[API] Execução manual solicitada");
-        new Thread(promoService::processarPromocoes).start();
+        new Thread(promoService::processarLinksFixos).start();
         return ResponseEntity.ok(Map.of(
             "mensagem", "Ciclo de promoções iniciado em background",
             "timestamp", LocalDateTime.now().toString()

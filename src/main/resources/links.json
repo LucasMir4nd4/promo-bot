@@ -1,0 +1,19 @@
+{
+  "links": [
+    {
+      "mlbId": "MLB66864521",
+      "linkAfiliado": "https://meli.la/1xYJB4Q",
+      "ativo": true
+    },
+    {
+      "mlbId": "MLBU3991489088",
+      "linkAfiliado": "https://meli.la/15XWefQ",
+      "ativo": true
+    },
+    {
+      "mlbId": "MLB1923847560",
+      "linkAfiliado": "https://mercadolivre.com/sec/SEU_LINK_AFILIADO_3",
+      "ativo": false
+    }
+  ]
+}

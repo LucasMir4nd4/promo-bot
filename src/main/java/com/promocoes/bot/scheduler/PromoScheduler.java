@@ -33,7 +33,7 @@ public class PromoScheduler {
     public void executarCicloPromocoes() {
         log.info(">>> [SCHEDULER] Disparando ciclo de promoções...");
         try {
-            promoService.processarPromocoes();
+            promoService.processarLinksFixos();
         } catch (Exception e) {
             log.error("[SCHEDULER] Erro inesperado no ciclo de promoções: {}", e.getMessage(), e);
         }
