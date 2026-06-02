@@ -50,7 +50,7 @@ public class MockOpenAiClient extends com.promocoes.bot.client.OpenAiClient {
 
         CopyPromoDTO copy = CopyPromoDTO.builder()
             .headline(headline)
-            .textoVenda(texto)
+            .textoVenda(produto.getTitulo() + "\n\n" +texto)
             .emoji(emoji)
             .build();
 

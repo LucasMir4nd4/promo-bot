@@ -57,6 +57,16 @@ public class BotController {
         ));
     }
 
+    @PostMapping("/buscarcategorias")
+    public ResponseEntity<Map<String, String>> executar() {
+        log.info("[API] Execução manual solicitada");
+        new Thread(promoService::processarPromocoes).start();
+        return ResponseEntity.ok(Map.of(
+                "mensagem", "Ciclo de promoções iniciado em background",
+                "timestamp", LocalDateTime.now().toString()
+        ));
+    }
+
     /**
      * Lista os últimos produtos enviados.
      * GET /api/enviados?horas=24

@@ -7,6 +7,13 @@ target/
 # Environment (NUNCA subir no git!)
 .env
 
+# Configuration files (dados sensíveis e específicos da máquina)
+application.yml
+application-*.yml
+application.properties
+application-*.properties
+links.json
+
 # IDE
 .idea/
 *.iml
