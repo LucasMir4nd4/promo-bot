@@ -3,6 +3,7 @@ package com.promocoes.bot.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.promocoes.bot.dto.ProdutoDTO;
+import com.promocoes.bot.service.MercadoLivreAuthService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -14,28 +15,16 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Client para a API do Mercado Livre.
- *
- * Documentação: https://developers.mercadolivre.com.br/pt_br/itens-e-buscas
- *
- * IMPORTANTE: Para gerar links de afiliado você precisa:
- * 1. Ter conta no Mercado Pago / ML Afiliados
- * 2. O parâmetro matt_tool é o seu ID de afiliado (obtido no painel de afiliados)
- * 3. Access token gerado via OAuth2 nas credenciais do seu app em:
- *    https://developers.mercadolivre.com.br/
- */
 @Slf4j
 @Component
 public class MercadoLivreApiClient {
 
     private static final String BASE_URL = "https://api.mercadolibre.com";
 
-    @Value("${mercadolivre.access-token}")
-    private String accessToken;
+    private final MercadoLivreAuthService authService;
 
     @Value("${mercadolivre.partner-tag}")
-    private String partnerTag; // ex: milu20240103182159
+    private String partnerTag;
 
     @Value("${mercadolivre.desconto-minimo}")
     private int descontoMinimo;
@@ -43,7 +32,8 @@ public class MercadoLivreApiClient {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    public MercadoLivreApiClient() {
+    public MercadoLivreApiClient(MercadoLivreAuthService authService) {
+        this.authService = authService;
         this.restTemplate = new RestTemplate();
         this.objectMapper = new ObjectMapper();
     }
@@ -215,7 +205,7 @@ public class MercadoLivreApiClient {
      */
     private JsonNode get(String url) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + accessToken);
+        headers.set("Authorization", "Bearer " + authService.getAccessToken());
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         HttpEntity<Void> request = new HttpEntity<>(headers);

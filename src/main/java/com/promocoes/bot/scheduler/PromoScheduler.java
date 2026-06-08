@@ -1,41 +1,42 @@
 package com.promocoes.bot.scheduler;
 
+import com.promocoes.bot.service.AliexpressPromoService;
 import com.promocoes.bot.service.MercadoLivrePromoService;
-import com.promocoes.bot.service.PromoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/**
- * Scheduler responsável por disparar o ciclo de promoções periodicamente.
- *
- * Configuração do cron em application.yml:
- *   scheduler.cron: "0 0 * * * *"  → executa a cada hora
- *
- * Exemplos de cron:
- *   "0 0 * * * *"    → a cada 1 hora
- *   "0 0/30 * * * *" → a cada 30 minutos
- *   "0 0 9,12,18 * * *" → às 9h, 12h e 18h
- */
+import java.util.concurrent.CompletableFuture;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class PromoScheduler {
 
-    private final MercadoLivrePromoService promoService;
+    private final MercadoLivrePromoService mercadoLivreService;
+    private final AliexpressPromoService aliexpressService;
 
-    /**
-     * Executa o ciclo de busca e envio de promoções.
-     * O cron é lido do application.yml (scheduler.cron).
-     */
     @Scheduled(cron = "${scheduler.cron}")
     public void executarCicloPromocoes() {
-        log.info(">>> [SCHEDULER] Disparando ciclo de promoções...");
-        try {
-            promoService.processarLinksFixos();
-        } catch (Exception e) {
-            log.error("[SCHEDULER] Erro inesperado no ciclo de promoções: {}", e.getMessage(), e);
-        }
+        log.info(">>> [SCHEDULER] Disparando ciclo simultâneo: MercadoLivre + AliExpress");
+
+        CompletableFuture<Void> ml = CompletableFuture
+                .runAsync(mercadoLivreService::processarPromocoes)
+                .exceptionally(e -> {
+                    log.error("[SCHEDULER] Erro no ciclo MercadoLivre: {}", e.getMessage());
+                    return null;
+                });
+
+        CompletableFuture<Void> ali = CompletableFuture
+                .runAsync(aliexpressService::processarPromocoes)
+                .exceptionally(e -> {
+                    log.error("[SCHEDULER] Erro no ciclo AliExpress: {}", e.getMessage());
+                    return null;
+                });
+
+        CompletableFuture.allOf(ml, ali).join();
+
+        log.info(">>> [SCHEDULER] Ciclo finalizado (todos os sources concluídos)");
     }
 }

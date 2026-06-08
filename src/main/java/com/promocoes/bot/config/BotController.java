@@ -1,6 +1,7 @@
 package com.promocoes.bot.config;
 
 import com.promocoes.bot.repository.ProdutoEnviadoRepository;
+import com.promocoes.bot.service.AliexpressPromoService;
 import com.promocoes.bot.service.MercadoLivrePromoService;
 import com.promocoes.bot.service.PromoService;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +19,7 @@ import java.util.Map;
  * Útil para testes e monitoramento via VPS.
  */
 @Slf4j
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
@@ -25,6 +27,7 @@ public class BotController {
 //
 //    private final PromoService promoService;
     private final MercadoLivrePromoService promoService;
+    private final AliexpressPromoService aliexpressService;
     private final ProdutoEnviadoRepository repository;
 
     /**
@@ -63,6 +66,16 @@ public class BotController {
         new Thread(promoService::processarPromocoes).start();
         return ResponseEntity.ok(Map.of(
                 "mensagem", "Ciclo de promoções iniciado em background",
+                "timestamp", LocalDateTime.now().toString()
+        ));
+    }
+
+    @PostMapping("/aliexpress/executar")
+    public ResponseEntity<Map<String, String>> executarAliexpress() {
+        log.info("[API] Execução manual AliExpress solicitada");
+        new Thread(aliexpressService::processarPromocoes).start();
+        return ResponseEntity.ok(Map.of(
+                "mensagem", "Ciclo AliExpress iniciado em background",
                 "timestamp", LocalDateTime.now().toString()
         ));
     }
