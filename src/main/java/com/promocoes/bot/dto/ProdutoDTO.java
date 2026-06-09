@@ -25,6 +25,7 @@ public class ProdutoDTO {
     private String urlProduto;  // URL base do produto
     private String urlAfiliado; // URL com a tag de afiliado
     private String categoria;
+    private String fonte;
 
     /**
      * Calcula o valor economizado

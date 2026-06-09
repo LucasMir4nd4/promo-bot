@@ -110,6 +110,7 @@ public class MockAmazonApiClient extends com.promocoes.bot.client.AmazonApiClien
             .urlProduto(produto.getUrlProduto())
             .urlAfiliado(produto.getUrlAfiliado())
             .categoria(produto.getCategoria())
+            .fonte("Amazon")
             .build();
 
         log.info("[MOCK] Produto simulado: {} ({}% OFF)", produto.getTitulo(), produto.getPercentualDesconto());

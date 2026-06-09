@@ -41,10 +41,10 @@ public class ProdutoEnviado {
     @Column(name = "percentual_desconto")
     private Integer percentualDesconto;
 
-    @Column(name = "url_imagem", length = 1000)
+    @Column(name = "url_imagem", length = 2000)
     private String urlImagem;
 
-    @Column(name = "url_afiliado", length = 1000)
+    @Column(name = "url_afiliado", length = 2000)
     private String urlAfiliado;
 
     /** Categoria do produto na Amazon */

@@ -225,6 +225,7 @@ public class AliexpressApiClient {
                     .urlProduto(urlProduto)
                     .urlAfiliado(urlAfiliado)
                     .categoria(categoriaId)
+                    .fonte("AliExpress")
                     .build();
 
         } catch (Exception e) {

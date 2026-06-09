@@ -227,6 +227,7 @@ public class AmazonApiClient {
                     .urlImagem(urlImagem)
                     .urlProduto(urlProduto)
                     .urlAfiliado(urlAfiliado)
+                    .fonte("Amazon")
                     .build();
 
                 produtos.add(dto);

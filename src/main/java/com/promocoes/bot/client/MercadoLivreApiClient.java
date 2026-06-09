@@ -148,6 +148,7 @@ public class MercadoLivreApiClient {
                 .urlImagem(urlImagem)
                 .urlProduto(urlProduto)
                 .urlAfiliado(urlAfiliado)
+                .fonte("Mercado Livre")
                 .build();
     }
 
@@ -192,6 +193,7 @@ public class MercadoLivreApiClient {
                     .urlImagem(urlImagem)
                     .urlProduto("https://www.mercadolivre.com.br/p/" + itemId)
                     .urlAfiliado("")
+                    .fonte("Mercado Livre")
                     .build();
 
         } catch (Exception e) {

@@ -78,19 +78,21 @@ public class TelegramBotClient extends TelegramLongPollingBot {
      * Formata a mensagem com HTML (suportado pelo Telegram).
      */
     private String formatarMensagem(ProdutoDTO produto, CopyPromoDTO copy) {
+        String loja = produto.getFonte() != null ? produto.getFonte().toUpperCase() : "LOJA";
         return String.format(
             "<b>%s</b>\n\n" +
             "%s\n\n" +
             "💰 <s>R$ %.2f</s>  →  <b>R$ %.2f</b>\n" +
             "📉 <b>%d%% OFF</b>  |  Economia de R$ %.2f\n\n" +
-            "🛒 <a href=\"%s\">COMPRAR AGORA NA AMAZON</a>",
+            "🛒 <a href=\"%s\">COMPRAR AGORA NO %s</a>",
             copy.getHeadline(),
             copy.getTextoVenda(),
             produto.getPrecoOriginal(),
             produto.getPrecoAtual(),
             produto.getPercentualDesconto(),
             produto.getValorEconomizado(),
-            produto.getUrlAfiliado()
+            produto.getUrlAfiliado(),
+            loja
         );
     }
 
