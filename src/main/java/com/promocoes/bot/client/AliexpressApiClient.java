@@ -8,15 +8,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
-
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Client para a API de Afiliados do AliExpress (Open Platform v2).
@@ -237,25 +237,35 @@ public class AliexpressApiClient {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("method", method);
         params.put("app_key", appKey);
-        params.put("timestamp", String.valueOf(Instant.now().toEpochMilli()));
+        params.put("timestamp", LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
         params.put("format", "json");
         params.put("v", "2.0");
-        params.put("sign_method", "hmac-sha256");
+        params.put("sign_method", "sha256");
         return params;
     }
 
     private JsonNode post(Map<String, String> params) {
         params.put("sign", assinar(params));
 
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(BASE_URL);
-        params.forEach(builder::queryParam);
+        String body = params.entrySet().stream()
+                .map(e -> {
+                    try {
+                        return java.net.URLEncoder.encode(e.getKey(), "UTF-8")
+                                + "=" +
+                                java.net.URLEncoder.encode(e.getValue(), "UTF-8");
+                    } catch (Exception ex) {
+                        return e.getKey() + "=" + e.getValue();
+                    }
+                })
+                .collect(Collectors.joining("&"));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         ResponseEntity<String> response = restTemplate.exchange(
-                builder.toUriString(), HttpMethod.POST,
-                new HttpEntity<>(headers), String.class
+                BASE_URL, HttpMethod.POST,
+                new HttpEntity<>(body, headers), String.class
         );
 
         try {
