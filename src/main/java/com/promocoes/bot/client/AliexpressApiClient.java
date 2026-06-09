@@ -34,8 +34,9 @@ import java.util.*;
 public class AliexpressApiClient {
 
     private static final String BASE_URL = "https://api-sg.aliexpress.com/sync";
-    private static final String FIELDS = "productId,productTitle,salePrice,originalPrice,discount," +
-            "productMainImageUrl,promotionLink,productDetailUrl,categoryId";
+    private static final String FIELDS = "product_id,product_title,target_sale_price,target_original_price," +
+            "original_price,discount,product_main_image_url,promotion_link,product_detail_url," +
+            "first_level_category_id,first_level_category_name,commission_rate";
 
     @Value("${aliexpress.app-key}")
     private String appKey;
@@ -88,18 +89,24 @@ public class AliexpressApiClient {
             params.put("tracking_id", trackingId);
 
             JsonNode response = post(params);
-            JsonNode result = response
+            JsonNode respResult = response
                     .path("aliexpress_affiliate_product_detail_get_response")
-                    .path("result")
-                    .path("products")
-                    .path("product");
+                    .path("resp_result");
 
-            if (!result.isArray() || result.isEmpty()) {
+            int respCode = respResult.path("resp_code").asInt(-1);
+            if (respCode != 200) {
+                log.error("[ALIEXPRESS] Erro ao buscar produto {}: {} - {}",
+                        productId, respCode, respResult.path("resp_msg").asText());
+                return null;
+            }
+
+            JsonNode productList = respResult.path("result").path("products").path("product");
+            if (!productList.isArray() || productList.isEmpty()) {
                 log.warn("[ALIEXPRESS] Produto não encontrado: {}", productId);
                 return null;
             }
 
-            return parseProduct(result.get(0));
+            return parseProduct(productList.get(0));
 
         } catch (Exception e) {
             log.error("[ALIEXPRESS] Erro ao buscar produto {}: {}", productId, e.getMessage());
@@ -118,7 +125,7 @@ public class AliexpressApiClient {
 
         try {
             while (produtos.size() < maxResultados) {
-                Map<String, String> params = buildBaseParams("aliexpress.affiliate.hotproduct.query");
+                Map<String, String> params = buildBaseParams("aliexpress.affiliate.product.query");
                 params.put("fields", FIELDS);
                 params.put("tracking_id", trackingId);
                 params.put("page_no", String.valueOf(pagina));
@@ -129,25 +136,19 @@ public class AliexpressApiClient {
                 }
 
                 JsonNode response = post(params);
-                JsonNode result = response
-                        .path("aliexpress_affiliate_hotproduct_query_response")
-                        .path("resp_result")
-                        .path("result");
+                JsonNode respResult = response
+                        .path("aliexpress_affiliate_product_query_response")
+                        .path("resp_result");
 
-                int respCode = response
-                        .path("aliexpress_affiliate_hotproduct_query_response")
-                        .path("resp_result")
-                        .path("resp_code")
-                        .asInt(-1);
+                int respCode = respResult.path("resp_code").asInt(-1);
 
                 if (respCode != 200) {
-                    String respMsg = response
-                            .path("aliexpress_affiliate_hotproduct_query_response")
-                            .path("resp_result")
-                            .path("resp_msg").asText("erro desconhecido");
-                    log.error("[ALIEXPRESS] API retornou erro {}: {}", respCode, respMsg);
+                    log.error("[ALIEXPRESS] API retornou erro {}: {}",
+                            respCode, respResult.path("resp_msg").asText("erro desconhecido"));
                     break;
                 }
+
+                JsonNode result = respResult.path("result");
 
                 JsonNode productList = result.path("products").path("product");
                 if (!productList.isArray() || productList.isEmpty()) {
@@ -170,7 +171,7 @@ public class AliexpressApiClient {
             }
 
         } catch (Exception e) {
-            log.error("[ALIEXPRESS] Erro ao buscar hot products: {}", e.getMessage());
+            log.error("[ALIEXPRESS] Erro ao buscar hot products: {}", e.getMessage(), e);
         }
 
         log.info("[ALIEXPRESS] {} produto(s) encontrado(s)", produtos.size());
@@ -179,19 +180,20 @@ public class AliexpressApiClient {
 
     private ProdutoDTO parseProduct(JsonNode node) {
         try {
-            String productId = node.path("productId").asText("");
-            String titulo    = node.path("productTitle").asText("Produto sem título");
-            String urlImagem = node.path("productMainImageUrl").asText("");
-            String urlAfiliado = node.path("promotionLink").asText("");
-            String urlProduto  = node.path("productDetailUrl").asText("");
-            String categoriaId = node.path("categoryId").asText("");
+            String productId   = node.path("product_id").asText("");
+            String titulo      = node.path("product_title").asText("Produto sem título");
+            String urlImagem   = node.path("product_main_image_url").asText("");
+            String urlAfiliado = node.path("promotion_link").asText("");
+            String urlProduto  = node.path("product_detail_url").asText("");
+            String categoriaId = node.path("first_level_category_id").asText("");
 
-            BigDecimal precoAtual    = parseBigDecimal(node.path("salePrice").asText("0"));
-            BigDecimal precoOriginal = parseBigDecimal(node.path("originalPrice").asText("0"));
+            // target_sale_price e target_original_price já vêm em BRL
+            BigDecimal precoAtual    = parseBigDecimal(node.path("target_sale_price").asText("0"));
+            BigDecimal precoOriginal = parseBigDecimal(node.path("target_original_price").asText("0"));
 
             if (precoAtual.compareTo(BigDecimal.ZERO) == 0) return null;
 
-            // Desconto pode vir pronto da API ou calculado
+            // desconto já vem pronto ("57%"), mas calculamos se vier vazio
             int desconto;
             String discountStr = node.path("discount").asText("").replace("%", "").trim();
             if (!discountStr.isBlank()) {
@@ -206,12 +208,12 @@ public class AliexpressApiClient {
             }
 
             if (desconto < descontoMinimo) {
-                log.debug("[ALIEXPRESS] Produto {} ignorado: {}% de desconto (mínimo: {}%)",
+                log.debug("[ALIEXPRESS] Produto {} ignorado: {}% OFF (mínimo: {}%)",
                         productId, desconto, descontoMinimo);
                 return null;
             }
 
-            log.info("[ALIEXPRESS] Produto: {} | {}% OFF", titulo, desconto);
+            log.info("[ALIEXPRESS] Produto: {} | {}% OFF | R$ {}", titulo, desconto, precoAtual);
 
             return ProdutoDTO.builder()
                     .asin(productId)
@@ -273,6 +275,12 @@ public class AliexpressApiClient {
      * 4. Converte para hex uppercase
      */
     private String assinar(Map<String, String> params) {
+        if (appSecret == null || appSecret.isBlank()) {
+            throw new IllegalStateException(
+                "ALIEXPRESS_APP_SECRET não configurado. Adicione a variável de ambiente na IDE " +
+                "(Run Configuration > Environment Variables) ou rode com o perfil mock.");
+        }
+
         try {
             List<String> keys = new ArrayList<>(params.keySet());
             Collections.sort(keys);
@@ -292,8 +300,10 @@ public class AliexpressApiClient {
             }
             return hex.toString();
 
+        } catch (IllegalStateException e) {
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Erro ao assinar requisição AliExpress", e);
+            throw new RuntimeException("Erro ao assinar requisição AliExpress: " + e.getMessage(), e);
         }
     }
 

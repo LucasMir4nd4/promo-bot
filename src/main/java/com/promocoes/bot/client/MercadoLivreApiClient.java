@@ -158,11 +158,11 @@ public class MercadoLivreApiClient {
      */
     public ProdutoDTO buscarPorItemId(String itemId) {
         try {
-            JsonNode item = get(BASE_URL + "/products/" + itemId +"/items");
+            // MLB66864521 é um item ID → endpoint correto é /items/{id}
+            JsonNode item = get(BASE_URL + "/items/" + itemId);
 
             String titulo = item.path("title").asText("Produto sem título");
 
-            // Pega a maior imagem disponível
             JsonNode pictures = item.path("pictures");
             String urlImagem = pictures.isArray() && !pictures.isEmpty()
                     ? pictures.get(0).path("url").asText("").replace("-I.jpg", "-O.jpg")
@@ -191,7 +191,7 @@ public class MercadoLivreApiClient {
                     .percentualDesconto(desconto)
                     .urlImagem(urlImagem)
                     .urlProduto("https://www.mercadolivre.com.br/p/" + itemId)
-                    .urlAfiliado("") // será substituído pelo link fixo do links.json
+                    .urlAfiliado("")
                     .build();
 
         } catch (Exception e) {
