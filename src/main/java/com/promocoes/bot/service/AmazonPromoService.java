@@ -27,7 +27,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PromoService {
+public class AmazonPromoService {
 
     private final AmazonApiClient amazonApiClient;
     private final OpenAiClient openAiClient;

@@ -1,9 +1,10 @@
 package com.promocoes.bot.config;
 
+import com.promocoes.bot.client.AmazonApiClient;
 import com.promocoes.bot.repository.ProdutoEnviadoRepository;
 import com.promocoes.bot.service.AliexpressPromoService;
 import com.promocoes.bot.service.MercadoLivrePromoService;
-import com.promocoes.bot.service.PromoService;
+import com.promocoes.bot.service.AmazonPromoService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -24,16 +25,12 @@ import java.util.Map;
 @RequestMapping("/api")
 @RequiredArgsConstructor
 public class BotController {
-//
-//    private final PromoService promoService;
-    private final MercadoLivrePromoService promoService;
+
+    private final MercadoLivrePromoService mercadoLivrePromoService;
+    private final AmazonPromoService amazonPromoService;
     private final AliexpressPromoService aliexpressService;
     private final ProdutoEnviadoRepository repository;
 
-    /**
-     * Health check – confirma que o bot está rodando.
-     * GET /api/health
-     */
     @GetMapping("/health")
     public ResponseEntity<Map<String, Object>> health() {
         long totalEnviados = repository.count();
@@ -44,31 +41,33 @@ public class BotController {
         ));
     }
 
-    /**
-     * Dispara o ciclo de promoções manualmente (sem esperar o scheduler).
-     * POST /api/executar
-     *
-     * Útil para testar sem precisar esperar o próximo cron.
-     */
-    @PostMapping("/executar")
+
+    @PostMapping("/mercadolivre/executar")
     public ResponseEntity<Map<String, String>> executarManual() {
         log.info("[API] Execução manual solicitada");
-        new Thread(promoService::processarLinksFixos).start();
+        new Thread(mercadoLivrePromoService::processarLinksFixos).start();
         return ResponseEntity.ok(Map.of(
             "mensagem", "Ciclo de promoções iniciado em background",
             "timestamp", LocalDateTime.now().toString()
         ));
     }
 
-    @PostMapping("/buscarcategorias")
-    public ResponseEntity<Map<String, String>> executar() {
+    @PostMapping("/amazon/executar")
+    public ResponseEntity<Map<String, String>> executarAmazon() {
         log.info("[API] Execução manual solicitada");
-        new Thread(promoService::processarPromocoes).start();
+        new Thread(amazonPromoService::processarPromocoes).start();
         return ResponseEntity.ok(Map.of(
-                "mensagem", "Ciclo de promoções iniciado em background",
-                "timestamp", LocalDateTime.now().toString()
+            "mensagem", "Ciclo de promoções iniciado em background",
+            "timestamp", LocalDateTime.now().toString()
         ));
     }
+    
+    @PostMapping("/mercadolivre/buscarcategorias")
+    public ResponseEntity<?> executar() {
+        return ResponseEntity.ok(mercadoLivrePromoService.buscarCategorias());
+    }
+
+
 
     @PostMapping("/aliexpress/executar")
     public ResponseEntity<Map<String, String>> executarAliexpress() {

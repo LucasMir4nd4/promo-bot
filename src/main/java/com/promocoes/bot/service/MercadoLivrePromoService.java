@@ -1,5 +1,6 @@
 package com.promocoes.bot.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.promocoes.bot.client.*;
 import com.promocoes.bot.dto.CopyPromoDTO;
 import com.promocoes.bot.dto.LinkDTO;
@@ -15,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Serviço principal que orquestra todo o fluxo do bot.
@@ -84,6 +86,22 @@ public class MercadoLivrePromoService {
         }
 
         log.info("=== Ciclo de links fixos finalizado. {} enviado(s). ===", totalEnviados);
+    }
+
+    public List<Map<String, String>> buscarCategorias() {
+
+        JsonNode node = mercadoLivreApiClient.buscarCategoria();
+        List<Map<String, String>> categorias = new ArrayList<>();
+
+        if (node.isArray()) {
+            for (JsonNode cat : node) {
+                categorias.add(Map.of(
+                    "id", cat.path("id").asText(),
+                    "nome", cat.path("name").asText()
+                ));
+            }
+        }
+        return categorias;
     }
 
     // =========================================================================

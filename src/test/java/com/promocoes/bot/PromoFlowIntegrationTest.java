@@ -3,7 +3,7 @@ package com.promocoes.bot;
 import com.promocoes.bot.dto.CopyPromoDTO;
 import com.promocoes.bot.dto.ProdutoDTO;
 import com.promocoes.bot.repository.ProdutoEnviadoRepository;
-import com.promocoes.bot.service.PromoService;
+import com.promocoes.bot.service.AmazonPromoService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PromoFlowIntegrationTest {
 
     @Autowired
-    private PromoService promoService;
+    private AmazonPromoService promoService;
 
     @Autowired
     private ProdutoEnviadoRepository repository;

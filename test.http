@@ -1,0 +1,15 @@
+GET http://localhost:8080/api/health
+
+###
+
+POST http://localhost:8080/api/amazon/executar
+
+###
+POST http://localhost:8080/api/mercadolivre/executar
+
+###
+
+POST http://localhost:8080/api/aliexpress/executar
+
+###
+POST http://localhost:8080/api/mercadolivre/buscarcategorias

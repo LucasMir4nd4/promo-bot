@@ -90,6 +90,12 @@ public class MercadoLivreApiClient {
         String url = BASE_URL + "/highlights/MLB/category/" + categoriaId;
         return get(url);
     }
+    
+    public JsonNode buscarCategoria(){
+        
+        String url = BASE_URL + "/sites/MLBR/categories";
+        return get(url);
+    }
 
     /**
      * Busca dados completos de um produto pelo ID e monta o DTO com link de afiliado.
