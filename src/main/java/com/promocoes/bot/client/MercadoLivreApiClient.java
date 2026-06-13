@@ -63,16 +63,19 @@ public class MercadoLivreApiClient {
                 if (processados >= maxResultados) break;
 
                 String productId = itemNode.path("id").asText();
+                String itemType = itemNode.path("type").asText();
                 if (productId.isBlank()) continue;
 
                 try {
-                    ProdutoDTO produto = buscarDadosProduto(productId);
+                    ProdutoDTO produto = "USER_PRODUCT".equals(itemType)
+                            ? buscarPorItemId(productId)
+                            : buscarDadosProduto(productId);
                     if (produto != null) {
                         produtos.add(produto);
                         processados++;
                     }
                 } catch (Exception e) {
-                    log.warn("Erro ao buscar produto {}: {}", productId, e.getMessage());
+                    log.warn("Erro ao buscar produto {} ({}): {}", productId, itemType, e.getMessage());
                 }
             }
 
@@ -93,7 +96,7 @@ public class MercadoLivreApiClient {
     
     public JsonNode buscarCategoria(){
         
-        String url = BASE_URL + "/sites/MLBR/categories";
+        String url = BASE_URL + "/sites/MLB/categories";
         return get(url);
     }
 
@@ -165,7 +168,6 @@ public class MercadoLivreApiClient {
      */
     public ProdutoDTO buscarPorItemId(String itemId) {
         try {
-            // MLB66864521 é um item ID → endpoint correto é /items/{id}
             JsonNode item = get(BASE_URL + "/items/" + itemId);
 
             String titulo = item.path("title").asText("Produto sem título");
@@ -180,6 +182,8 @@ public class MercadoLivreApiClient {
                     ? precoAtual
                     : BigDecimal.valueOf(item.path("original_price").asDouble(0));
 
+            if (precoAtual.compareTo(BigDecimal.ZERO) == 0) return null;
+
             int desconto = 0;
             if (precoOriginal.compareTo(precoAtual) > 0) {
                 desconto = precoOriginal.subtract(precoAtual)
@@ -188,7 +192,16 @@ public class MercadoLivreApiClient {
                         .intValue();
             }
 
-            log.info("✅ Item ML: {} | R$ {} | {}% OFF", titulo, precoAtual, desconto);
+            if (desconto < descontoMinimo) {
+                log.debug("Item {} ignorado: {}% de desconto (mínimo: {}%)", itemId, desconto, descontoMinimo);
+                return null;
+            }
+
+            String urlProduto = item.path("permalink").asText(
+                    "https://www.mercadolivre.com.br/p/" + itemId);
+            String urlAfiliado = urlProduto + (urlProduto.contains("?") ? "&" : "?") + "matt_tool=" + partnerTag;
+
+            log.info("Item ML: {} | R$ {} | {}% OFF", titulo, precoAtual, desconto);
 
             return ProdutoDTO.builder()
                     .asin(itemId)
@@ -197,13 +210,13 @@ public class MercadoLivreApiClient {
                     .precoOriginal(precoOriginal)
                     .percentualDesconto(desconto)
                     .urlImagem(urlImagem)
-                    .urlProduto("https://www.mercadolivre.com.br/p/" + itemId)
-                    .urlAfiliado("")
+                    .urlProduto(urlProduto)
+                    .urlAfiliado(urlAfiliado)
                     .fonte("Mercado Livre")
                     .build();
 
         } catch (Exception e) {
-            log.error("❌ Erro ao buscar item {}: {}", itemId, e.getMessage());
+            log.error("Erro ao buscar item {}: {}", itemId, e.getMessage());
             throw new RuntimeException("Erro ao buscar item ML: " + itemId, e);
         }
     }

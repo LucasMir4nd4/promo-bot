@@ -49,7 +49,7 @@ public class MercadoLivrePromoService {
     private int maxProdutos;
 
     // =========================================================================
-    // MODO 1 — Links fixos do links.json (use esse agora)
+    // MODO 1 — Links fixos do links.json
     // =========================================================================
 
     /**
