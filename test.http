@@ -13,3 +13,24 @@ POST http://localhost:8080/api/aliexpress/executar
 
 ###
 POST http://localhost:8080/api/mercadolivre/buscarcategorias
+
+
+
+
+
+###
+GET http://3.22.216.4/api/health
+
+###
+
+POST http://3.22.216.4/api/amazon/executar
+
+###
+POST http://3.22.216.4/api/mercadolivre/executar
+
+###
+
+POST http://3.22.216.4/api/aliexpress/executar
+
+###
+POST http://3.22.216.4/api/mercadolivre/buscarcategorias

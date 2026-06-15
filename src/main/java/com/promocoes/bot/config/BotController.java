@@ -22,7 +22,6 @@ import java.util.Map;
  * Útil para testes e monitoramento via VPS.
  */
 @Slf4j
-@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
