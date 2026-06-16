@@ -91,6 +91,17 @@ public class BotController {
         ));
     }
 
+
+    @PostMapping("/mercadolivre/linksfixos")
+    public ResponseEntity<Map<String, String>> executarLinksFixos() {
+        log.info("[API] Execução de links fixos solicitada");
+        new Thread(mercadoLivrePromoService::processarLinksFixos).start();
+        return ResponseEntity.ok(Map.of(
+                "mensagem", "Ciclo de links fixos iniciado em background",
+                "timestamp", LocalDateTime.now().toString()
+        ));
+    }
+
     @PostMapping("/amazon/executar")
     public ResponseEntity<Map<String, String>> executarAmazon() {
         log.info("[API] Execução manual solicitada");

@@ -3,9 +3,10 @@ package com.promocoes.bot.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.promocoes.bot.client.*;
 import com.promocoes.bot.dto.CopyPromoDTO;
-import com.promocoes.bot.dto.LinkDTO;
 import com.promocoes.bot.dto.ProdutoDTO;
+import com.promocoes.bot.model.LinkFixo;
 import com.promocoes.bot.model.ProdutoEnviado;
+import com.promocoes.bot.repository.LinkFixoRepository;
 import com.promocoes.bot.repository.ProdutoEnviadoRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +41,7 @@ public class MercadoLivrePromoService {
     private final TelegramBotClient telegramBotClient;
     private final WhatsAppEvolutionClient whatsAppClient;
     private final ProdutoEnviadoRepository repository;
-    private final List<LinkDTO> linksAtivos; // injetado via LinksConfig
+    private final LinkFixoRepository linkFixoRepository;
 
     @Value("${mercadolivre.categorias}")
     private String categoriasConfig;
@@ -59,20 +60,19 @@ public class MercadoLivrePromoService {
      * Chamado pelo PromoScheduler enquanto não tiver o partner tag configurado.
      */
     public void processarLinksFixos() {
+        List<LinkFixo> linksAtivos = linkFixoRepository.findByAtivoTrue();
         log.info("=== Iniciando ciclo com links fixos ({} ativo(s)) ===", linksAtivos.size());
         int totalEnviados = 0;
 
-        for (LinkDTO link : linksAtivos) {
+        for (LinkFixo link : linksAtivos) {
             if (totalEnviados >= maxProdutos) {
                 log.info("Limite de {} produtos atingido. Encerrando ciclo.", maxProdutos);
                 break;
             }
 
             try {
-                // Busca título, preço, imagem reais direto na API do ML
                 ProdutoDTO produto = mercadoLivreApiClient.buscarPorItemId(link.getMlbId());
 
-                // Sobrescreve o link de afiliado com o seu link fixo do JSON
                 produto = produto.toBuilder()
                         .urlAfiliado(link.getLinkAfiliado())
                         .build();
