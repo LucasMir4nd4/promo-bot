@@ -34,3 +34,28 @@ POST http://3.22.216.4/api/aliexpress/executar
 
 ###
 POST http://3.22.216.4/api/mercadolivre/buscarcategorias
+
+###############################################################
+# Bootstrap OAuth Mercado Livre (rodar 1x)
+# OBS: o app sobe na porta 8081 (server.port no application.yml)
+###############################################################
+
+### 1a. Caminho rápido: injeta o refresh_token do .env direto no banco.
+#       Se retornar erro (invalid_grant), use o Postman e o passo 1b.
+POST http://localhost:8081/api/ml/auth/seed
+Content-Type: application/json
+
+{ "refreshToken": "TG-6a2d63ba7cb8d60001698890-1620572657" }
+
+### 1b. Via Postman: cole aqui o refresh_token novo obtido no Postman.
+POST http://localhost:8081/api/ml/auth/seed
+Content-Type: application/json
+
+{ "refreshToken": "COLE_O_REFRESH_TOKEN_DO_POSTMAN_AQUI" }
+
+### 2. (opcional) Fluxo OAuth pelo próprio bot — só funciona com redirect_uri https.
+#      Abra a urlAutorizacao retornada no navegador, logado como ADMIN.
+GET http://localhost:8081/api/ml/auth/login
+
+### 3. Validação: dispara o ciclo usando o token salvo no banco.
+POST http://localhost:8081/api/mercadolivre/executar

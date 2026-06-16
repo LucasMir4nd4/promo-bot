@@ -226,7 +226,7 @@ public class MercadoLivreApiClient {
      */
     private JsonNode get(String url) {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + authService.getAccessToken());
+        headers.set("Authorization", "Bearer " + authService.getAccessTokenValido());
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));
 
         HttpEntity<Void> request = new HttpEntity<>(headers);
