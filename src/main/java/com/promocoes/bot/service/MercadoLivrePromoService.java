@@ -88,6 +88,23 @@ public class MercadoLivrePromoService {
         log.info("=== Ciclo de links fixos finalizado. {} enviado(s). ===", totalEnviados);
     }
 
+    public void adicionarLinkFixo(LinkDTO link) {
+        if (link == null || link.getMlbId() == null || link.getMlbId().isBlank()) {
+            throw new IllegalArgumentException("mlbId é obrigatório");
+        }
+
+        boolean jaExiste = linksAtivos.stream()
+                .anyMatch(l -> l.getMlbId().equalsIgnoreCase(link.getMlbId()));
+
+        if (jaExiste) {
+            log.warn("Link já existe na lista ativa: {}", link.getMlbId());
+            return;
+        }
+
+        linksAtivos.add(link);
+        log.info("Link adicionado em tempo de execução: {} — total ativo(s): {}", link.getMlbId(), linksAtivos.size());
+    }
+
     public List<Map<String, String>> buscarCategorias() {
 
         JsonNode node = mercadoLivreApiClient.buscarCategoria();
