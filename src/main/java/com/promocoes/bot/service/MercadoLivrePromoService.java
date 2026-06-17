@@ -70,12 +70,18 @@ public class MercadoLivrePromoService {
                 break;
             }
 
-            try {
-                ProdutoDTO produto = mercadoLivreApiClient.buscarPorItemId(link.getMlbId());
+            if (link.getLinkAfiliado() == null || link.getLinkAfiliado().isBlank()) {
+                log.warn("Link fixo {} ativo mas sem link de afiliado, pulando.", link.getMlbId());
+                continue;
+            }
 
-                produto = produto.toBuilder()
-                        .urlAfiliado(link.getLinkAfiliado())
-                        .build();
+            try {
+                ProdutoDTO produto = montarProdutoDoLink(link);
+
+                if (produto == null) {
+                    log.warn("Link fixo {} sem dados (snapshot vazio e item indisponível), pulando.", link.getMlbId());
+                    continue;
+                }
 
                 boolean enviado = processarProduto(produto);
                 if (enviado) totalEnviados++;
@@ -86,6 +92,34 @@ public class MercadoLivrePromoService {
         }
 
         log.info("=== Ciclo de links fixos finalizado. {} enviado(s). ===", totalEnviados);
+    }
+
+    /**
+     * Monta o ProdutoDTO de um link fixo para publicação, sempre com o linkAfiliado
+     * preenchido na mão. Prefere o snapshot capturado pelo bot (evita o GET /items/{id},
+     * que pode retornar 403 access_denied); só busca no ML quando não há snapshot
+     * (links antigos, anteriores à captura automática).
+     */
+    private ProdutoDTO montarProdutoDoLink(LinkFixo link) {
+        if (link.getTitulo() != null && !link.getTitulo().isBlank()) {
+            return ProdutoDTO.builder()
+                    .asin(link.getMlbId())
+                    .titulo(link.getTitulo())
+                    .precoAtual(link.getPrecoAtual())
+                    .precoOriginal(link.getPrecoOriginal())
+                    .percentualDesconto(link.getPercentualDesconto())
+                    .urlImagem(link.getUrlImagem())
+                    .urlProduto(link.getUrlProduto())
+                    .urlAfiliado(link.getLinkAfiliado())
+                    .categoria(link.getCategoria())
+                    .fonte("Mercado Livre")
+                    .build();
+        }
+
+        // Legado: link sem snapshot → busca no ML (sem filtro de desconto).
+        ProdutoDTO produto = mercadoLivreApiClient.buscarPorItemId(link.getMlbId(), false);
+        if (produto == null) return null;
+        return produto.toBuilder().urlAfiliado(link.getLinkAfiliado()).build();
     }
 
     public List<Map<String, String>> buscarCategorias() {
@@ -109,32 +143,71 @@ public class MercadoLivrePromoService {
     // =========================================================================
 
     /**
-     * Fluxo automático: busca produtos em promoção por categoria no ML.
-     * Requer mercadolivre.access-token e mercadolivre.partner-tag no .env.
+     * Fluxo automático: busca produtos em promoção por categoria no ML e os salva
+     * como PENDENTES (LinkFixo sem link de afiliado) para revisão manual no front-end.
+     * Não posta nada aqui — a publicação acontece via processarLinksFixos depois que
+     * o link de afiliado é preenchido na mão.
      */
     public void processarPromocoes() {
-        log.info("=== Iniciando ciclo de promoções por categoria ===");
+        log.info("=== Iniciando ciclo de captura de promoções por categoria ===");
 
         List<String> categorias = Arrays.asList(categoriasConfig.split(","));
-        int totalEnviados = 0;
+        int totalCapturados = 0;
 
         for (String categoria : categorias) {
-            if (totalEnviados >= maxProdutos) {
+            if (totalCapturados >= maxProdutos) {
                 log.info("Limite de {} produtos atingido. Encerrando ciclo.", maxProdutos);
                 break;
             }
 
-            int restante = maxProdutos - totalEnviados;
+            int restante = maxProdutos - totalCapturados;
             List<ProdutoDTO> produtos = buscarProdutosPorCategoria(categoria.trim(), restante);
 
             for (ProdutoDTO produto : produtos) {
-                if (totalEnviados >= maxProdutos) break;
-                boolean enviado = processarProduto(produto);
-                if (enviado) totalEnviados++;
+                if (totalCapturados >= maxProdutos) break;
+                if (capturarComoPendente(produto)) totalCapturados++;
             }
         }
 
-        log.info("=== Ciclo finalizado. {} promoções enviadas. ===", totalEnviados);
+        log.info("=== Ciclo finalizado. {} produto(s) capturado(s) para revisão. ===", totalCapturados);
+    }
+
+    /**
+     * Salva o produto como LinkFixo PENDENTE (sem link de afiliado, inativo) para
+     * revisão manual. Pula duplicados — já capturado/na fila ou já enviado antes.
+     *
+     * @return true se um novo pendente foi criado
+     */
+    @Transactional
+    public boolean capturarComoPendente(ProdutoDTO produto) {
+        String mlbId = produto.getAsin();
+
+        if (linkFixoRepository.existsByMlbId(mlbId)) {
+            log.debug("Produto já na fila de revisão, ignorando: {}", mlbId);
+            return false;
+        }
+        if (repository.existsByAsin(mlbId)) {
+            log.debug("Produto já enviado anteriormente, ignorando: {}", mlbId);
+            return false;
+        }
+
+        LinkFixo pendente = LinkFixo.builder()
+                .mlbId(mlbId)
+                .linkAfiliado(null)   // preenchido na mão pelo front-end
+                .ativo(false)         // pendente até a revisão
+                .titulo(produto.getTitulo())
+                .precoAtual(produto.getPrecoAtual())
+                .precoOriginal(produto.getPrecoOriginal())
+                .percentualDesconto(produto.getPercentualDesconto())
+                .urlImagem(produto.getUrlImagem())
+                .urlProduto(produto.getUrlProduto())
+                .categoria(produto.getCategoria())
+                .build();
+
+        linkFixoRepository.save(pendente);
+        log.info("Capturado para revisão: {} ({}% OFF) | {}", produto.getTitulo(),
+                produto.getPercentualDesconto(), mlbId);
+        return true;
     }
 
     // =========================================================================

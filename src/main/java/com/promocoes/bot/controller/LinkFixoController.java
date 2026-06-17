@@ -21,17 +21,37 @@ public class LinkFixoController {
         return repository.findAll();
     }
 
-    @PostMapping
-    public ResponseEntity<LinkFixo> adicionar(@RequestBody LinkFixo link) {
-        link.setId(null);
-        return ResponseEntity.ok(repository.save(link));
+    /** Itens capturados pelo bot aguardando o link de afiliado ser preenchido na mão. */
+    @GetMapping("/pendentes")
+    public List<LinkFixo> pendentes() {
+        return repository.findByLinkAfiliadoIsNullOrderByIdDesc();
+    }
+
+    /**
+     * Preenche o link de afiliado de um pendente e já o ativa (pronto para postar).
+     * Body: { "linkAfiliado": "https://..." }
+     */
+    @PatchMapping("/{id}/afiliado")
+    public ResponseEntity<?> definirAfiliado(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String linkAfiliado = body.get("linkAfiliado");
+        if (linkAfiliado == null || linkAfiliado.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("erro", "linkAfiliado é obrigatório."));
+        }
+        return repository.findById(id).map(link -> {
+            link.setLinkAfiliado(linkAfiliado.trim());
+            link.setAtivo(true);
+            return ResponseEntity.ok((Object) repository.save(link));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     @PatchMapping("/{id}/ativar")
-    public ResponseEntity<LinkFixo> ativar(@PathVariable Long id) {
+    public ResponseEntity<?> ativar(@PathVariable Long id) {
         return repository.findById(id).map(link -> {
+            if (link.getLinkAfiliado() == null || link.getLinkAfiliado().isBlank()) {
+                return ResponseEntity.badRequest().body(Map.of("erro", "Preencha o link de afiliado antes de ativar."));
+            }
             link.setAtivo(true);
-            return ResponseEntity.ok(repository.save(link));
+            return ResponseEntity.ok((Object) repository.save(link));
         }).orElse(ResponseEntity.notFound().build());
     }
 

@@ -66,8 +66,18 @@ public class MercadoLivreApiClient {
                 String itemType = itemNode.path("type").asText();
                 if (productId.isBlank()) continue;
 
+                // USER_PRODUCT (MLBU...) é uma abstração do vendedor que agrupa itens.
+                // Não existe /items/MLBU... nem /products/MLBU...; resolver exigiria o
+                // seller_id (GET /users/{seller}/items/search?user_product_id=...), que
+                // o highlights não fornece. Pulamos sem poluir o log.
+                if ("USER_PRODUCT".equals(itemType)) {
+                    log.debug("Produto {} ignorado: USER_PRODUCT sem endpoint direto", productId);
+                    continue;
+                }
+
                 try {
-                    ProdutoDTO produto = "USER_PRODUCT".equals(itemType)
+                    // ITEM => id é um item real (/items/{id}); PRODUCT => catálogo (/products/{id}).
+                    ProdutoDTO produto = "ITEM".equals(itemType)
                             ? buscarPorItemId(productId)
                             : buscarDadosProduto(productId);
                     if (produto != null) {
@@ -104,7 +114,7 @@ public class MercadoLivreApiClient {
      * Busca dados completos de um produto pelo ID e monta o DTO com link de afiliado.
      * Retorna null se o produto não atender ao desconto mínimo.
      */
-    private ProdutoDTO buscarDadosProduto(String productId) {
+    public ProdutoDTO buscarDadosProduto(String productId) {
         // Busca o item real vinculado ao produto
         JsonNode itemsNode = get(BASE_URL + "/products/" + productId + "/items");
         JsonNode results = itemsNode.path("results");
@@ -165,8 +175,18 @@ public class MercadoLivreApiClient {
     /**
      * Busca dados de um item direto pelo ID (ex: MLB3939769540).
      * Usado quando o ID vem do links.json — não passa pela busca por categoria.
+     * Aplica o filtro de desconto mínimo (usado na busca por categoria).
      */
     public ProdutoDTO buscarPorItemId(String itemId) {
+        return buscarPorItemId(itemId, true);
+    }
+
+    /**
+     * Variante que permite ignorar o desconto mínimo.
+     * Para links fixos passe {@code filtrarPorDesconto = false}: o produto deve
+     * ser postado independentemente de estar em promoção.
+     */
+    public ProdutoDTO buscarPorItemId(String itemId, boolean filtrarPorDesconto) {
         try {
             JsonNode item = get(BASE_URL + "/items/" + itemId);
 
@@ -192,7 +212,7 @@ public class MercadoLivreApiClient {
                         .intValue();
             }
 
-            if (desconto < descontoMinimo) {
+            if (filtrarPorDesconto && desconto < descontoMinimo) {
                 log.debug("Item {} ignorado: {}% de desconto (mínimo: {}%)", itemId, desconto, descontoMinimo);
                 return null;
             }
